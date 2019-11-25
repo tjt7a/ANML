@@ -1,5 +1,6 @@
 '''
-	This serves as the ANML class file in Python
+	This serves as the ANML class file in Python with cellular automata
+	support.
 '''
 from enum import Enum
 
@@ -7,6 +8,33 @@ from enum import Enum
 class AnmlDefs(Enum):
     ALL_INPUT = 1
     NO_START = 2
+
+class Logic(object):
+	"""A class that represents a logic element in an automaton network"""
+
+	def __init__(self, *args, **kwargs):
+
+		self.neighbors_ = []
+		self.id_ = str(kwargs['logicId'])
+
+		assert type(self.id_) == str, "Logic ID is not valid!"
+
+	def add_edge(self, ste):
+		""" This function connects self to an STE state"""
+		""" QUESTION: Do we want to be able to connect multiple logics?"""
+		assert isinstance(ste, Ste), "ste is not a valid STE, it is a {}".format(type(ste))
+		self.neighbors_.append(ste)
+
+	def add_edges(self, stes):
+		"""A function that connects self to several states."""
+        for ste in stes:
+            self.add_edge(ste)
+
+    def __str__(self):
+		"""A function that prints out the ANML-formatted logic representation"""
+        string = "<logic-element id=\"" + self.id_ + "\""
+		string += "\t\t</logic-element>\n"
+		return string
 
 
 class Ste(object):
