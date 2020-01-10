@@ -1,13 +1,54 @@
 '''
-	This serves as the ANML class file in Python with cellular automata
-	support.
+	This serves as the ANML class file in Python with support for 
+    counters, logic gates and cellular automata.
+    Author: Tom Tracy II (tjt7a@virginia.edu)
 '''
 from enum import Enum
 
 
 class AnmlDefs(Enum):
+    """ Enums for valid start states"""
     ALL_INPUT = 1
     NO_START = 2
+
+
+
+class Element(Object):
+    """ Parent class for ANML elements"""
+    pass
+
+class Counter(object):
+    """"A class that represents a counter element in an automaton network"""
+
+    def __init__(self, *args, **kwargs):
+
+        self.neighbors_ = []
+        self.target = str(args[0])
+        self.id_ = str(kwargs['anmlId'])
+
+        assert type(self.id_) == str, "Counter ID is not valid"
+    
+    def add_edge(self, ste):
+        """ This function connects self to an STE state"""
+        assert isinstance(ste, Ste), "ste is not a valid STE, it is a {}".format(type(ste))
+        self.neighbors_.append(ste)
+    
+    def add_edges(self, stes):
+        """A function that connects self to several states."""
+        for ste in stes:
+            self.add_edge(ste)
+        
+    def __str__(self):
+        """A function that prints out the ANML-formatted counter representation"""
+        string = "\t\t<counter " + "at-target=\"" + self.at_target + "\"  " + "id=\"" + self.id_ + \
+            "\" target=\"" + self.target + "\">\n"
+        for neighbor in self.neighbors:
+            string += "\t\t\t<activate-on-target element=\"" + \
+                neighbor.id_ + "\"/>\n"
+        string += "\t\t</counter>\n"
+        return string
+
+
 
 class Logic(object):
 	"""A class that represents a logic element in an automaton network"""
@@ -97,7 +138,7 @@ class Anml(object):
     """A class that represents an automaton graph."""
 
     def __init__(self, aId="an1"):
-        self.stes_ = []
+        self.elements_ = []
         self.id_ = aId
 
     def __str__(self):
@@ -105,7 +146,7 @@ class Anml(object):
 
         string = "<anml version=\"1.0\"  xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\">\n"
         string += "\t<automata-network id=\"" + self.id_ + "\">\n"
-        for ste in self.stes_:
+        for element in self.elements_:
             string += '\t\t' + str(ste)
         string += '\t</automata-network>\n'
         string += '</anml>\n'
@@ -116,18 +157,26 @@ class Anml(object):
 
         ste = Ste(*args, **kargs)
 
-        self.stes_.append(ste)
+        self.elements_.append(ste)
         return ste
+    
+    def AddCounter(self, *args, **kargs):
+        """Add one counter to the network"""
 
-    def AddAnmlEdge(self, ste1, ste2):
-        """Add an edge between ste1 and ste2"""
+        counter = Counter(*args, **kargs)
 
-        ste1.add_edge(ste2)
+        self.elements_.append(counter)
+        return counter
 
-    def AddAnmlEdges(self, ste1, stes, stuff):
-        """Add an edge between ste1 and all stes in stes"""
+    def AddAnmlEdge(self, element1, element2):
+        """Add an edge between element1 and element2"""
 
-        ste1.add_edges(stes)
+        element1.add_edge(element2)
+
+    def AddAnmlEdges(self, element1, elements, stuff):
+        """Add an edge between element1 and all elements in elements"""
+
+        element1.add_edges(elements)
 
     def ExportAnml(self, filename):
         """Write out the automaton network to a file"""
@@ -136,8 +185,46 @@ class Anml(object):
             f.write(str(self))
         return 0
 
+class Macro(Anml):
+    """ A class that represents a Macro definition inherits from Anml"""
+
+    def __init__(self, *args, **kwargs):
+
+        self.id_ = str(kwargs['anmlId'])
+    
+    def __str__(self):
+        """Override ANML's __str__ method for Macros"""
+
+        string = "<macro-definition id=\"" + self.id_ + "\" + name=\"" + self.name_ + "\">\n"
+        string += "\t<header>\n"
+        string += "\t\t<interface-declarations>\n"
+        #for interface_declaration in interface_declarations: **For now not implemented**
+        string += "\t\t</interface-declarations\n"
+
+        string += "\t\t<parameter-declarations>\n"
+        for parameter in self.parameters:
+            string += "\t\t\t<parameter parameter-name=\"" + parameter.name_ + \
+                "\""
+            if parameter.default_value_:
+                string += " default-value=\"" + parameter.default_value + "\"/>\n"
+        string += "\t\t</parameter-declarations>\n"
+        string += "\t</header>\n"
+
+        string += "\t<body>\n"
+        string += "\t\t<port-definitions>\n"
+        # for port_definition in port_definitions: **For now not implemented**
+        string += "\t\t</port-definitions>\n"
+
+        for element in self.elements_:
+            string += '\t\t\t' + str(ste)
+
+        string += "\t</body>"
+        string += '</macro-definition>\n'
+        return string
+
 
 if __name__ == "__main__":
+    """ Test the class definitions"""
 
     anml = Anml()
 
