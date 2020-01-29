@@ -146,7 +146,7 @@ class Ste(Element):
             string += "start=\"" + self.start_type_ + "\">\n"
         else:
             string += ">\n"
-        if self.matching_ is not None:
+        if self.matching_:
             string += "\t\t\t<report-on-match reportcode=\"" +\
                 self.reportCode_ + "\"/>\n"
         for neighbor in self.neighbors_:
