@@ -82,6 +82,7 @@ class Logic(Element):
     """ A class that represents a logic element in an automaton network
         *** INCOMPLETE ***
         TODO: We need to figure out a good way to represent logic
+        A good way to represent each cell's input would be a 9x1 vector such as In = [C N NE E SE S SW W NW]
     """
     
     def __init__(self, *args, **kwargs):
