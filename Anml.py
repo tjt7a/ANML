@@ -12,6 +12,7 @@ class AnmlDefs(Enum):
     """ Enums for valid start states"""
     ALL_INPUT = 1
     NO_START = 2
+    START_OF_DATA = 3
 
 
 class Element(object):
@@ -134,6 +135,9 @@ class Ste(Element):
         if self.defs_ == AnmlDefs.ALL_INPUT:
             self.starting_ = True
             self.start_type_ = 'all-input'
+        elif self.defs_ == AnmlDefs.START_OF_DATA:
+            self.starting_ = True
+            self.start_type_ = 'start-of-data'
         else:
             self.starting_ = False
             self.start_type = 'no-start'
