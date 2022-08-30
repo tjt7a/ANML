@@ -6,6 +6,9 @@
     ** WARNING: Macros and non-STEs have not been tested yet **
 '''
 from enum import Enum
+from networkx import drawing
+import re
+import xml.etree.cElementTree as ET
 
 
 class AnmlDefs(Enum):
@@ -144,8 +147,18 @@ class Ste(Element):
 
     def __str__(self):
 
+        symbol_set = ''.join(self.character_class_)
+
+        # Replace the escape character with the hex for the symbol
+        if symbol_set == '\\':
+            print("FOUND A backslash that needs replacing with hex")
+            symbol_set = "\\x5C"
+            print("Symbol_set: ", symbol_set)
+            print("ID: ", self.id_)
+            #exit()
+
         string = "\t\t<state-transition-element id=\"" + self.id_ + "\" " + \
-            "symbol-set=\"" + ''.join(self.character_class_) + "\" "
+            "symbol-set=\"" + symbol_set + "\" "
         if self.starting_:
             string += "start=\"" + self.start_type_ + "\">\n"
         else:
@@ -213,11 +226,174 @@ class Anml(object):
         return 0
     
     def CreateMacroDef(self, **kwargs):
-        """Function for creating a macro definition"""
+        """Creates a macro definition"""
         
         macro = Macro(**kwargs)
         
         return macro
+
+    def parseHDOT(self, dotfile):
+        """ Parse homogeneous DOT file and extract data"""
+
+        graph = drawing.nx_pydot.read_dot(dotfile)
+
+        start = []
+        accept = []
+        nodes = {}
+        edges = {}
+
+        # Iterate through al the nodes
+        for node_id, node_info in graph.nodes.items():
+
+            shape = None
+
+            if node_id == 'START':
+                start.append(node_id)
+                value = '*'
+                nodes[node_id] = value
+                continue
+
+            if 'label' not in node_info:
+                continue
+            if 'shape' in node_info:
+                shape = node_info['shape']
+
+            # This is where stuff is broken
+            label = node_info['label']
+            print("LABEL: ", label)
+            first_newline = label.index("\\n")
+            first_double_newline  = label.index("\\n\\n", first_newline + 1)
+            index = label[1:first_newline]
+            rest = label[first_newline + 2: first_double_newline]
+            print("What we use: ", rest)
+
+            assert node_id == index, "Indexes don't match"
+
+            value = rest
+            # Ignore
+            if value == 'START-DS' or value == 'ACCEPT-EOD':
+                continue
+            if value == 'START':
+                start.append(node_id)
+                value = '*'
+            if value == 'ACCEPT':
+                accept.append(node_id)
+                value = '*'
+            if shape == 'doublecircle':
+                print("ACCEPTING: ", node_id)
+                assert node_id not in accept
+                accept.append(node_id)
+            
+            # Set nodes[name] to character set of the node
+            nodes[node_id] = value
+    
+        for edge, _ in graph.edges.items():
+            src = edge[0]
+            dst = edge[1]
+
+            print(src, dst)
+
+            if src in edges:
+                edges[src].append(dst)
+            else:
+                edges[src] = [dst]
+        
+        return start, accept, nodes, edges
+
+    @staticmethod
+    def sanitize_symbol_set(ss):
+        """ This method was ported from VASim's ste.cpp
+            Because VAsim's XML parser sometimes chokes on 
+            special characters
+        """
+
+        ss = re.sub('(?<!\\\)]]', "]\\]", ss)
+        ss = ss.replace("\\[", "\\x5B")
+        ss = ss.replace("\\]", "\\x5D")
+        ss = ss.replace("&", "\\x26")
+        ss = ss.replace("<", "\\x3C")
+        ss = ss.replace(">", "\\x3E")
+        ss = ss.replace("\"", "\\x22")
+        ss = ss.replace("\'", "\\x27")
+
+        return ss
+
+    def FromDOT(self, dotfile):
+        """Generates an ANML object from a DOT file"""
+
+        start, accept, nodes, edges = self.parseHDOT(dotfile)
+
+        # print("HDOT Results:")
+        # print("Start: ", start)
+        # print("Accept: ", accept)
+        # print("Nodes: ", nodes)
+        # print("Edges: ", edges)
+
+        #anml = Anml()
+        stes = {}
+
+        # Our start nodes are virtual, so let's make their neighbors start nodes
+        real_start_nodes = list()
+
+        # Grab the real start nodes
+        for node in start:
+            if node in edges.keys():
+                for dst in edges[node]:
+                    real_start_nodes.append(dst)
+
+
+        for node, character_set in nodes.items():
+
+            if node in start:
+                continue
+
+            start_type = AnmlDefs.NO_START
+            match = False
+            report_code = None
+
+            # Because VASim's xml parser sometimes can't handle special characters,
+            # we're going to sanitize some special substrings in our char sets
+            character_set = Anml.sanitize_symbol_set(character_set)
+
+            if node in real_start_nodes:
+
+                start_type = AnmlDefs.ALL_INPUT
+            
+            if node in accept:
+                report_code = node
+                match = True
+
+            ste = self.AddSTE(character_set, start_type,
+                    anmlId=node, match=match, reportCode=report_code)
+
+            stes[node] = ste
+        
+        for src, dsts in edges.items():
+
+            if src in start:
+                continue
+
+            if src not in nodes:
+                continue
+
+            for dst in dsts:
+
+                if dst not in nodes:
+                    continue
+
+                self.AddAnmlEdge(stes[src], stes[dst], 0)
+
+    @classmethod
+    def from_anml(cls, anml_filename):
+
+        with open(anml_filename, 'r') as f:
+
+            anml_tree = ET.parse(anml_filename)
+            anml_root = anml_tree.getroot()
+
+            return anml_root
+            
+
 
 class Macro(Anml):
     """ A class that represents a Macro definition inherits from Anml"""
@@ -277,25 +453,52 @@ class Macro(Anml):
 if __name__ == "__main__":
     """ Test the class definitions"""
 
+    #dotfile = '/home/tjt7a/src/hyperscan/build/bin/third_hyperscan/dump_3/Expr_0_00_before_asserts.dot'
+    #dotfile = '/home/tjt7a/src/hyperscan/build/bin/first_hyperscan/dump_0/rose_nfa_1.dot'
+    # dotfile = '/home/tjt7a/src/hyperscan/build/bin/first_hyperscan/dump_0/rose_nfa_2.dot'
+    # automata_file = 'test_anml.anml'
+
+    # anml = Anml()
+    # anml = anml.FromDOT(dotfile)
+    # anml.ExportAnml(automata_file)
+
     anml = Anml()
 
-    stes = []
+    root = Anml.from_anml("example_anml.anml")
 
-    report_symbol = r"\x%02X" % 255
+    for child in root.iter('state-transition-element'):
+        child_id = child.attrib["id"]
+        child_symbolset = child.attrib["symbol-set"]
+        child_start = child.attrib["start"]
+        print("id: {}, symbol-set: {}, start: {}".format(child_id, child_symbolset, child_start))
+        
+        if child_start not "none":
+            start_ste = anml.AddSTE()
 
-    for i in range(10):
-        if i == 0:
-            start_ste = anml.AddSTE(report_symbol, AnmlDefs.ALL_INPUT,
-                                    anmlId=i, match=False)
-            stes.append(start_ste)
         else:
-            character_class = r"\x%02X" % i
-            ste = anml.AddSTE(character_class, AnmlDefs.NO_START,
-                              anmlId=i, match=False)
-            anml.AddAnmlEdge(stes[-1], ste, 0)
-            stes.append(ste)
 
-    ste = anml.AddSTE(report_symbol, AnmlDefs.NO_START,
-                      anmlId=10, reportCode=10)
-    anml.AddAnmlEdge(stes[-1], ste, 0)
-    anml.ExportAnml("test_anml.anml")
+        
+    
+    #anml.ExportAnml("example_output.anml")
+
+    # anml = Anml()
+
+    # stes = []
+
+    # report_symbol = r"\x%02X" % 255
+
+    # for i in range(10):
+    #     if i == 0:
+    #         start_ste = anml.AddSTE(report_symbol, AnmlDefs.ALL_INPUT,
+    #                                 anmlId=i, match=False)
+    #         stes.append(start_ste)
+    #     else:
+    #         character_class = r"\x%02X" % i
+    #         ste = anml.AddSTE(character_class, AnmlDefs.NO_START,
+    #                           anmlId=i, match=False)
+    #         anml.AddAnmlEdge(stes[-1], ste, 0)
+    #         stes.append(ste)
+
+    # ste = anml.AddSTE(report_symbol, AnmlDefs.NO_START,
+    #                   anmlId=10, reportCode=10)
+    # anml.AddAnmlEdge(stes[-1], ste, 0)
